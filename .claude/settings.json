@@ -19,6 +19,13 @@
       "Read(//**/.aws/credentials)",
       "Read(//**/.kube/config)",
       "Read(//**/.ssh/**)",
+      "Read(./**/*KEY*)",
+      "Read(./**/*TOKEN*)",
+      "Read(./**/*SECRET*)",
+      "Read(./**/*api-key*)",
+      "Read(./**/*api_key*)",
+      "Read(./**/*apikey*)",
+      "Read(./**/secrets.*)",
       "WebFetch",
       "WebSearch"
     ]

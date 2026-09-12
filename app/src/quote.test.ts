@@ -223,6 +223,13 @@ describe("splitInstallments", () => {
     );
   });
 
+  it("відхиляє суму за межею безпечного цілого замість тихої втрати центів", () => {
+    // Number.isInteger(2 ** 54) === true, але арифметика там уже неточна:
+    // до фіксу splitInstallments(2 ** 54, 7) давав суму на 4 центи меншу.
+    // Знайдено незалежним рев'ю, не власним прогоном.
+    expect(() => splitInstallments(2 ** 54, 7)).toThrow(RangeError);
+  });
+
   it("відхиляє неціле число центів на вході", () => {
     expect(() => splitInstallments(100.5, 3)).toThrow(RangeError);
   });

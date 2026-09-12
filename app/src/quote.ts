@@ -82,11 +82,16 @@ export function estimateTotalCents(input: QuoteInput): number {
  * - залишок роздається **першим** платежам (front-loaded);
  * - для від'ємних сум (повернення коштів) працює симетрично.
  *
- * @throws {RangeError} якщо `totalCents` не ціле, або `parts` не ціле > 0.
+ * @throws {RangeError} якщо `totalCents` не є безпечним цілим, або `parts`
+ *   не ціле в межах `1..MAX_INSTALLMENTS`.
  */
 export function splitInstallments(totalCents: number, parts: number): number[] {
-  if (!Number.isInteger(totalCents)) {
-    throw rangeError("totalCents", "цілим числом центів", totalCents);
+  // Саме isSafeInteger, а не isInteger: останній повертає true для будь-якого
+  // float >= 2^53, де цілочисельна арифметика вже неточна. Тоді головна
+  // гарантія нижче тихо ламається — splitInstallments(2 ** 54, 7) губив
+  // 4 центи при формально «цілому» вході.
+  if (!Number.isSafeInteger(totalCents)) {
+    throw rangeError("totalCents", "цілим числом центів у межах безпечного цілого", totalCents);
   }
   if (!Number.isInteger(parts) || parts <= 0 || parts > MAX_INSTALLMENTS) {
     throw rangeError("parts", `цілим числом від 1 до ${MAX_INSTALLMENTS}`, parts);

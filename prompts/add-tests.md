@@ -19,8 +19,8 @@ Senior TypeScript-розробник, який пише тести як **спе
 
 ## Контекст
 
-- Модуль: `<шлях до модуля>` — перевірено на `app/src/quote.ts`.
-- Наявні тести: `<шлях до тестів>` — перевірено на `app/src/quote.test.ts`
+- Модуль: `{{шлях до модуля}}` — перевірено на `app/src/quote.ts`.
+- Наявні тести: `{{шлях до тестів}}` — перевірено на `app/src/quote.test.ts`
   (навмисно неповні, лише happy path).
 - Раннер: `vitest`, запуск `cd app && npm test`. Типи: `cd app && npm run typecheck`.
 - Проєкт ESM + `moduleResolution: NodeNext` — імпорти пишуться з розширенням

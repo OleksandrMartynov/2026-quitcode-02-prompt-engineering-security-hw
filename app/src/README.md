@@ -19,25 +19,26 @@
 
 - Усі суми — цілі числа в центах: `rateCents` задокументований як центи
   (`app/src/quote.ts:13`), `splitInstallments` приймає і повертає центи
-  (`app/src/quote.ts:50`), `formatMoney` приймає центи
+  (`app/src/quote.ts:87`), `formatMoney` приймає центи
   (`app/src/quote.ts:69`).
 - Вихід `estimateTotalCents` — завжди ціле число, бо результат проходить через
-  `Math.round` (`app/src/quote.ts:46`); інваріант закріплений тестом
+  `Math.round` (`app/src/quote.ts:65`); інваріант закріплений тестом
   (`app/src/quote.test.ts:33-45`).
 - Наслідок передачі не-центів (дробових сум) різний для трьох функцій:
   - `estimateTotalCents`: дробові `hours` — штатний, підтримуваний вхід
     (`app/src/quote.test.ts:74-79`). А от `rateCents` на цілість **не
     перевіряється** — перевірка стосується лише скінченності та знака
-    (`app/src/quote.ts:35-37`), тож дробова ставка не буде відхилена, а її
-    дріб тихо зникне в округленні (`app/src/quote.ts:46`). Тесту на цей
+    (`app/src/quote.ts:55`), тож дробова ставка не буде відхилена, а її
+    дріб тихо зникне в округленні (`app/src/quote.ts:65`). Тесту на цей
     випадок немає.
   - `formatMoney`: дробові центи ламають формат, бо `abs % 100` дає дріб, який
-    потім просто вклеюється в рядок (`app/src/quote.ts:74-75`). Контрактом
+    потім просто вклеюється в рядок (`app/src/quote.ts:107-108`). Контрактом
     така поведінка не зафіксована — тестів на неї немає
     (`app/src/quote.test.ts:198-233`).
-  - `splitInstallments`: дробовий `totalCents` обрізається `Math.trunc`
-    (`app/src/quote.ts:61`), але набір тестових кейсів містить лише цілі суми
-    (`app/src/quote.test.ts:119-130`) — поведінка **не визначена**.
+  - `splitInstallments`: дробовий або надто великий `totalCents` **відхиляється**
+    `RangeError` (`app/src/quote.ts:88-93`), тест — `app/src/quote.test.ts:226`.
+    Перевірка саме `Number.isSafeInteger`, а не `isInteger`: останній повертає
+    `true` для значень ≥ 2^53, де арифметика вже неточна.
 
 ## `estimateTotalCents(input: QuoteInput): number`
 
@@ -45,15 +46,15 @@
 
 | Поле | Одиниця | Джерело |
 | --- | --- | --- |
-| `hours` | години, число ≥ 0, дробові дозволені | `app/src/quote.ts:12`, `app/src/quote.ts:32-34` |
-| `rateCents` | центи за годину, число ≥ 0 | `app/src/quote.ts:13`, `app/src/quote.ts:35-37` |
-| `discountPercent` | відсотки `0..100`, необов'язкове, типово `0` | `app/src/quote.ts:16`, `app/src/quote.ts:30`, `app/src/quote.ts:38-42` |
-| Результат | центи, ціле число | `app/src/quote.ts:46`, `app/src/quote.test.ts:33-45` |
+| `hours` | години, число ≥ 0, дробові дозволені | `app/src/quote.ts:12`, `app/src/quote.ts:54-34` |
+| `rateCents` | центи за годину, число ≥ 0 | `app/src/quote.ts:13`, `app/src/quote.ts:55` |
+| `discountPercent` | відсотки `0..100`, необов'язкове, типово `0` | `app/src/quote.ts:16`, `app/src/quote.ts:54`, `app/src/quote.ts:56-58` |
+| Результат | центи, ціле число | `app/src/quote.ts:65`, `app/src/quote.test.ts:33-45` |
 
 ### Інваріанти
 
 1. Результат — ціле число центів для будь-якого валідного входу
-   (`app/src/quote.ts:46`, `app/src/quote.test.ts:33-45`).
+   (`app/src/quote.ts:65`, `app/src/quote.test.ts:33-45`).
 2. Результат лежить у межах `[0, hours × rateCents]` для знижок `0..100`
    (`app/src/quote.test.ts:47-54`).
 3. Монотонність: більша знижка ніколи не дає більший підсумок
@@ -86,13 +87,13 @@ estimateTotalCents({ hours: 1.5, rateCents: 4999 }); // 7499
 | --- | --- | --- |
 | `hours: 0` або `rateCents: 0` | `0` | `app/src/quote.test.ts:68-72` |
 | `discountPercent: 100` | `0` | `app/src/quote.test.ts:64-66` |
-| `discountPercent` відсутній | трактується як `0` | `app/src/quote.ts:30` |
-| від'ємні `hours` або `rateCents` | `RangeError` | `app/src/quote.ts:32-37`, `app/src/quote.test.ts:87-90` |
-| `discountPercent` < 0 або > 100 | `RangeError` | `app/src/quote.ts:38-42`, `app/src/quote.test.ts:92-107` |
-| `NaN`, `Infinity` у будь-якому полі | `RangeError` | `app/src/quote.ts:32`, `app/src/quote.ts:35`, `app/src/quote.ts:38`, `app/src/quote.test.ts:98-101` |
-| `hours × rateCents` виходить за безпечне ціле | `RangeError` — кожне значення окремо скінченне, добуток уже ні | `app/src/quote.ts:54-58` |
+| `discountPercent` відсутній | трактується як `0` | `app/src/quote.ts:54` |
+| від'ємні `hours` або `rateCents` | `RangeError` | `app/src/quote.ts:54-37`, `app/src/quote.test.ts:87-90` |
+| `discountPercent` < 0 або > 100 | `RangeError` | `app/src/quote.ts:56-58`, `app/src/quote.test.ts:92-107` |
+| `NaN`, `Infinity` у будь-якому полі | `RangeError` | `app/src/quote.ts:54`, `app/src/quote.ts:55`, `app/src/quote.ts:56`, `app/src/quote.test.ts:98-101` |
+| `hours × rateCents` виходить за безпечне ціле | `RangeError` — кожне значення окремо скінченне, добуток уже ні | `app/src/quote.ts:67-69` |
 | нецілі `hours` | валідний вхід, округлення на виході | `app/src/quote.test.ts:74-79` |
-| нецілий `rateCents` | не відхиляється, дріб зникає в округленні; тестом не покрито | `app/src/quote.ts:35-37`, `app/src/quote.ts:46` |
+| нецілий `rateCents` | не відхиляється, дріб зникає в округленні; тестом не покрито | `app/src/quote.ts:55`, `app/src/quote.ts:65` |
 
 Помилка — це частина контракту, а не збій: вхід поза діапазоном навмисно
 гучний, бо тихий кламп виставив би клієнту рахунок, якого ніхто не замовляв
@@ -104,14 +105,14 @@ estimateTotalCents({ hours: 1.5, rateCents: 4999 }); // 7499
 
 | Параметр | Одиниця | Джерело |
 | --- | --- | --- |
-| `totalCents` | центи, ціле число (може бути від'ємним — повернення коштів) | `app/src/quote.ts:50`, `app/src/quote.ts:58` |
-| `parts` | кількість платежів | `app/src/quote.ts:50` |
-| Результат | масив із `parts` цілих сум у центах | `app/src/quote.ts:64-66`, `app/src/quote.test.ts:142-149` |
+| `totalCents` | центи, ціле число (може бути від'ємним — повернення коштів) | `app/src/quote.ts:87`, `app/src/quote.ts:58` |
+| `parts` | кількість платежів | `app/src/quote.ts:87` |
+| Результат | масив із `parts` цілих сум у центах | `app/src/quote.ts:95-101`, `app/src/quote.test.ts:142-149` |
 
 ### Інваріанти
 
 1. Головний: сума всіх платежів **точно** дорівнює `totalCents` — залишок не
-   губиться і не створюється (`app/src/quote.ts:61-66`,
+   губиться і не створюється (`app/src/quote.ts:88-93`,
    `app/src/quote.test.ts:136-140`).
 2. Довжина результату дорівнює `parts`, кожен елемент — ціле число центів
    (`app/src/quote.test.ts:142-149`).
@@ -119,7 +120,7 @@ estimateTotalCents({ hours: 1.5, rateCents: 4999 }); // 7499
    1 цент (`app/src/quote.test.ts:151-158`).
 4. Порядок роздачі залишку — **конвенція, а не інваріант**: залишок іде першим
    платежам (front-loaded), і інваріант суми від порядку не залежить
-   (`app/src/quote.ts:64-66`, `app/src/quote.test.ts:115-117`).
+   (`app/src/quote.ts:95-101`, `app/src/quote.test.ts:115-117`).
 
 ### Приклади з реальними числами тестів
 
@@ -143,11 +144,11 @@ splitInstallments(-100, 3); // [-34, -33, -33]
 | --- | --- | --- |
 | `totalCents: 0`, `parts: 3` | `[0, 0, 0]` | `app/src/quote.test.ts:189-191` |
 | `parts: 1` | увесь рахунок одним платежем: `splitInstallments(123457, 1) === [123457]` | `app/src/quote.test.ts:185-187` |
-| від'ємна сума | симетрично, залишок теж першим платежам: `[-34, -33, -33]` | `app/src/quote.ts:63`, `app/src/quote.ts:65`, `app/src/quote.test.ts:193-195` |
+| від'ємна сума | симетрично, залишок теж першим платежам: `[-34, -33, -33]` | `app/src/quote.ts:97`, `app/src/quote.ts:98`, `app/src/quote.test.ts:193-195` |
 | сума, що ділиться націло | рівні платежі: `splitInstallments(90000, 3) === [30000, 30000, 30000]` | `app/src/quote.test.ts:132-134` |
-| `parts` ≤ 0, нецілий або `NaN` | `RangeError` | `app/src/quote.ts:61-66` |
-| `parts` > 1200 | `RangeError` (доменна, не `Invalid array length`) | `app/src/quote.ts:66` |
-| `totalCents` нецілий | `RangeError` | `app/src/quote.ts:61-63` |
+| `parts` ≤ 0, нецілий або `NaN` | `RangeError` | `app/src/quote.ts:88-93` |
+| `parts` > 1200 | `RangeError` (доменна, не `Invalid array length`) | `app/src/quote.ts:91` |
+| `totalCents` нецілий | `RangeError` | `app/src/quote.ts:88-90` |
 
 Вхід валідується: `parts` має бути цілим > 0, `totalCents` — цілим числом
 центів, інакше `RangeError`. До цього перевірок не було, і функція мовчки
@@ -163,10 +164,10 @@ splitInstallments(-100, 3); // [-34, -33, -33]
 | Параметр | Одиниця | Джерело |
 | --- | --- | --- |
 | `cents` | центи, ціле число | `app/src/quote.ts:69` |
-| Результат | рядок виду `$1,234.50`, мінус **перед** знаком долара | `app/src/quote.ts:71`, `app/src/quote.ts:75`, `app/src/quote.test.ts:225-228` |
+| Результат | рядок виду `$1,234.50`, мінус **перед** знаком долара | `app/src/quote.ts:105`, `app/src/quote.ts:75`, `app/src/quote.test.ts:225-228` |
 
 Локаль зафіксована як `en-US` — коми між тисячами й крапка перед центами не
-залежать від локалі середовища (`app/src/quote.ts:73`,
+залежать від локалі середовища (`app/src/quote.ts:107`,
 `app/src/quote.test.ts:230-232`).
 
 ### Інваріант
@@ -194,9 +195,9 @@ formatMoney(-123450); // "-$1,234.50"
 | межа долара | `100 → "$1.00"` | `app/src/quote.test.ts:221-223` |
 | від'ємні | `-5 → "-$0.05"` | `app/src/quote.test.ts:225-228` |
 | великі суми | `100000000 → "$1,000,000.00"` | `app/src/quote.test.ts:230-232` |
-| `-0` | перевірка `cents < 0` для `-0` хибна (`app/src/quote.ts:71`), тож знак не виводиться; тестом не покрито | `app/src/quote.ts:71` |
-| нецілі центи | формат ламається (`abs % 100` дає дріб) — контрактом не зафіксовано | `app/src/quote.ts:74-75` |
-| `NaN`, `Infinity` | **не визначено**: перевірок немає, тестів немає | `app/src/quote.ts:70-75` |
+| `-0` | перевірка `cents < 0` для `-0` хибна (`app/src/quote.ts:105`), тож знак не виводиться; тестом не покрито | `app/src/quote.ts:105` |
+| нецілі центи | формат ламається (`abs % 100` дає дріб) — контрактом не зафіксовано | `app/src/quote.ts:107-108` |
+| `NaN`, `Infinity` | **не визначено**: перевірок немає, тестів немає | `app/src/quote.ts:104-110` |
 
 ## Пастки
 
@@ -211,10 +212,10 @@ formatMoney(-123450); // "-$1,234.50"
   (`app/src/quote.test.ts:92-96`), і це свідоме рішення, а не недогляд
   (`app/src/quote.ts:22-27`).
 - **`Math.abs(remainder)` — не косметика.** Саме він змушує роздачу залишку
-  працювати для від'ємних сум (`app/src/quote.ts:65`); прибрати його — і
+  працювати для від'ємних сум (`app/src/quote.ts:98`); прибрати його — і
   повернення коштів розсиплеться (`app/src/quote.test.ts:193-195`).
 - **`step` несе знак.** Для від'ємних сум залишок додається як `-1`
-  (`app/src/quote.ts:63`); жорстко вписаний `+1` зламає інваріант суми
+  (`app/src/quote.ts:97`); жорстко вписаний `+1` зламає інваріант суми
   (`app/src/quote.test.ts:136-140`).
 - **Front-loaded — конвенція, інваріант — сума.** Якщо змінюєте порядок роздачі
   залишку, оновіть точні очікування масивів
@@ -222,12 +223,12 @@ formatMoney(-123450); // "-$1,234.50"
   (`app/src/quote.test.ts:115-117`).
 - **`parts` тепер валідується і кидає.** Обчислена кількість частин, що дала
   `0` чи дріб, більше не деградує тихо — вона зупинить розрахунок
-  (`app/src/quote.ts:61-66`). Обробляйте `RangeError` на боці виклику.
+  (`app/src/quote.ts:88-93`). Обробляйте `RangeError` на боці виклику.
 - **Локаль у `formatMoney` зафіксована навмисно.** Заміна `"en-US"` на локаль
-  користувача зламає очікування ком у тисячах (`app/src/quote.ts:73`,
+  користувача зламає очікування ком у тисячах (`app/src/quote.ts:107`,
   `app/src/quote.test.ts:230-232`).
 - **`formatMoney` розраховує на цілі центи.** `Math.floor(abs / 100)` і
-  `abs % 100` (`app/src/quote.ts:73-74`) не захищають від дробу — очищайте
+  `abs % 100` (`app/src/quote.ts:107-108`) не захищають від дробу — очищайте
   вхід до виклику.
 
 ## Потребує уточнення
@@ -235,11 +236,14 @@ formatMoney(-123450); // "-$1,234.50"
 Питання, на які з коду й тестів відповіді немає, тому контракт по них не
 описаний:
 
-- Яким має бути контракт `splitInstallments` для `parts` нульового,
-  від'ємного або дробового: кидати `RangeError` (як це робить
-  `estimateTotalCents` для свого діапазону, `app/src/quote.ts:32-42`) чи щось
-  інше? Зараз перевірок немає (`app/src/quote.ts:60-67`) і тестів теж
-  (`app/src/quote.test.ts:119-130`).
-- Чи мають `rateCents`, `totalCents` і `cents` перевірятись на цілість. Зараз
-  цієї перевірки немає в жодній із трьох функцій (`app/src/quote.ts:35-37`,
-  `app/src/quote.ts:61`, `app/src/quote.ts:70-75`).
+- Чи має `formatMoney` відхиляти нецілі центи. Зараз ні: `formatMoney(1.5)`
+  повертає `"$0.1.5"` (`app/src/quote.ts:104-110`), тесту на цей клас входу
+  немає. Дві сусідні функції свій контракт **виконують** — `formatMoney`
+  єдина лишилась без нього. Свідомо не виправлено: це змінило б поведінку,
+  а прогін `refactor-safe` мав заборону на нову поведінку.
+
+> Два питання, що стояли тут раніше — контракт `parts` і цілочисельність
+> `totalCents` — **закриті**: `app/src/quote.ts:88-93`, тести
+> `app/src/quote.test.ts:208-228`. Лишено запис про це, бо документ, у якому
+> «відкриті питання» не закриваються після фіксу, вводить в оману сильніше,
+> ніж документ без такого розділу.

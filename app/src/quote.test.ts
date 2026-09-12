@@ -20,7 +20,10 @@ const parseMoney = (s: string): number => {
 describe("estimateTotalCents", () => {
   // ІНВАРІАНТ: для будь-якого валідного входу (hours >= 0, rateCents >= 0,
   // discountPercent у 0..100) результат — ціле число центів у межах
-  // [0, hours * rateCents]. Кошторис не буває дробовим і не буває від'ємним.
+  // [0, round(hours * rateCents)]. Кошторис не буває дробовим і не буває
+  // від'ємним. Саме round: при дробових годинах half-up може дати на пів
+  // цента більше за gross (1.5 * 4999 = 7498.5 → 7499).
+  // Тест нижче бере цілий gross, тож ширшого твердження не доводить.
 
   it("рахує суму без знижки", () => {
     expect(estimateTotalCents({ hours: 10, rateCents: 5000 })).toBe(50000);

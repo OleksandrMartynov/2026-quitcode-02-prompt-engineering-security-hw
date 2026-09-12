@@ -26,6 +26,14 @@
       "Read(./**/*api_key*)",
       "Read(./**/*apikey*)",
       "Read(./**/secrets.*)",
+      "Read(./**/*_key*)",
+      "Read(./**/*-key*)",
+      "Read(./**/*.key.*)",
+      "Read(./**/*_token*)",
+      "Read(./**/*-token*)",
+      "Read(./**/*_secret*)",
+      "Read(./**/*-secret*)",
+      "Read(./**/*.secret*)",
       "WebFetch",
       "WebSearch"
     ]

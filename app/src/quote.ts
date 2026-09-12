@@ -63,7 +63,9 @@ export function estimateTotalCents(input: QuoteInput): number {
 
   // Перевірки вище пропускають `hours: Number.MAX_VALUE` — кожне значення
   // окремо скінченне, а їхній добуток уже ні. Без цієї перевірки функція
-  // повертає `Infinity`, і кошторис тихо стає безглуздим.
+  // повертає `NaN`: `gross` стає `Infinity`, а `(Infinity * 0) / 100` — це
+  // вже `NaN`, тож кошторис тихо перетворюється на «не число».
+  // Саме `isSafeInteger`, а не `isFinite`: перший ловить обидва випадки.
   if (!Number.isSafeInteger(total)) {
     throw rangeError("підсумок", "у межах безпечного цілого", total);
   }

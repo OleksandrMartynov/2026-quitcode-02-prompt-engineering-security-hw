@@ -16,21 +16,54 @@ export interface QuoteInput {
   discountPercent?: number;
 }
 
-/** Ціна проєкту в центах з урахуванням знижки. */
+/**
+ * Ціна проєкту в центах з урахуванням знижки.
+ *
+ * Контракт (`QuoteInput`) виконується, а не лише документується: вхід поза
+ * діапазоном — це помилка введення, і вона має бути гучною. Тихо клампити
+ * означало б виставити клієнту рахунок, якого ніхто не замовляв.
+ *
+ * @throws {RangeError} якщо `hours` або `rateCents` від'ємні чи не скінченні,
+ *   або якщо `discountPercent` поза діапазоном `0..100`.
+ */
 export function estimateTotalCents(input: QuoteInput): number {
   const { hours, rateCents, discountPercent = 0 } = input;
+
+  if (!Number.isFinite(hours) || hours < 0) {
+    throw new RangeError(`hours має бути скінченним числом >= 0, отримано: ${hours}`);
+  }
+  if (!Number.isFinite(rateCents) || rateCents < 0) {
+    throw new RangeError(`rateCents має бути скінченним числом >= 0, отримано: ${rateCents}`);
+  }
+  if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
+    throw new RangeError(
+      `discountPercent має бути в діапазоні 0..100, отримано: ${discountPercent}`,
+    );
+  }
+
   const gross = hours * rateCents;
   const discount = (gross * discountPercent) / 100;
   return Math.round(gross - discount);
 }
 
 /**
- * Розбити суму на `parts` рівних платежів (у центах).
- * Повертає масив довжиною `parts`.
+ * Розбити суму на `parts` платежів (у центах).
+ *
+ * Гарантії:
+ * - довжина результату дорівнює `parts`;
+ * - сума всіх платежів **точно** дорівнює `totalCents` — залишок від ділення
+ *   не губиться і не створюється;
+ * - платежі відрізняються між собою не більше ніж на 1 цент;
+ * - залишок роздається **першим** платежам (front-loaded);
+ * - для від'ємних сум (повернення коштів) працює симетрично.
  */
 export function splitInstallments(totalCents: number, parts: number): number[] {
-  const each = Math.round(totalCents / parts);
-  return new Array(parts).fill(each);
+  const base = Math.trunc(totalCents / parts);
+  const remainder = totalCents - base * parts;
+  const step = totalCents < 0 ? -1 : 1;
+  return Array.from({ length: parts }, (_, i) =>
+    i < Math.abs(remainder) ? base + step : base,
+  );
 }
 
 /** Форматування центів у рядок на кшталт "$1,234.50". */

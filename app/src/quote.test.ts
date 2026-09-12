@@ -78,24 +78,32 @@ describe("estimateTotalCents", () => {
     expect(estimateTotalCents({ hours: 0.25, rateCents: 12345 })).toBe(3086);
   });
 
-  it("не видає від'ємний кошторис для від'ємних годин або ставки", () => {
-    // Від'ємний вхід некоректний: функція має його відхилити або
-    // нормалізувати, але не повертати мовчки від'ємний рахунок клієнту.
-    expect(estimateTotalCents({ hours: -5, rateCents: 5000 })).toBeGreaterThanOrEqual(0);
-    expect(estimateTotalCents({ hours: 10, rateCents: -5000 })).toBeGreaterThanOrEqual(0);
+  // Рішення по класу (B) «невизначена специфікація»: контракт `QuoteInput`
+  // (`hours`/`rateCents` >= 0, `discountPercent` 0..100) тепер виконується,
+  // а не лише документується. Обрано throw, а не мовчазний кламп: 150%
+  // знижки — це помилка введення, і рахунок, «виправлений» тихо, гірший за
+  // рахунок, який не порахувався. Див. docs/prompt-runs.md#прогін-2.
+
+  it("відхиляє від'ємні години або ставку замість від'ємного рахунку", () => {
+    expect(() => estimateTotalCents({ hours: -5, rateCents: 5000 })).toThrow(RangeError);
+    expect(() => estimateTotalCents({ hours: 10, rateCents: -5000 })).toThrow(RangeError);
   });
 
-  it("не видає від'ємний кошторис, коли знижка більша за 100%", () => {
-    // discountPercent задокументовано як 0..100; 150% не має перетворювати
-    // рахунок на виплату клієнту.
-    expect(estimateTotalCents({ hours: 10, rateCents: 5000, discountPercent: 150 })).toBeGreaterThanOrEqual(0);
+  it("відхиляє знижку більшу за 100% замість виплати клієнту", () => {
+    expect(() =>
+      estimateTotalCents({ hours: 10, rateCents: 5000, discountPercent: 150 }),
+    ).toThrow(RangeError);
   });
 
-  it("не збільшує кошторис понад повну вартість при від'ємній знижці", () => {
-    const gross = 10 * 5000;
-    expect(
+  it("відхиляє нечислові значення замість тихого NaN", () => {
+    expect(() => estimateTotalCents({ hours: NaN, rateCents: 5000 })).toThrow(RangeError);
+    expect(() => estimateTotalCents({ hours: Infinity, rateCents: 5000 })).toThrow(RangeError);
+  });
+
+  it("відхиляє від'ємну знижку замість тихої націнки", () => {
+    expect(() =>
       estimateTotalCents({ hours: 10, rateCents: 5000, discountPercent: -10 }),
-    ).toBeLessThanOrEqual(gross);
+    ).toThrow(RangeError);
   });
 });
 

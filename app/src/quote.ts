@@ -17,6 +17,21 @@ export interface QuoteInput {
 }
 
 /**
+ * Помилка порушеного контракту в єдиній формі «X має бути ..., отримано: Y».
+ * Модуль-приватна: формат повідомлення задається тут і ніде більше.
+ */
+function rangeError(name: string, expectation: string, value: number): RangeError {
+  return new RangeError(`${name} має бути ${expectation}, отримано: ${value}`);
+}
+
+/** Контракт «скінченне число >= 0»: перевірка і її текст живуть разом. */
+function assertFiniteNonNegative(name: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw rangeError(name, "скінченним числом >= 0", value);
+  }
+}
+
+/**
  * Ціна проєкту в центах з урахуванням знижки.
  *
  * Контракт (`QuoteInput`) виконується, а не лише документується: вхід поза
@@ -29,16 +44,10 @@ export interface QuoteInput {
 export function estimateTotalCents(input: QuoteInput): number {
   const { hours, rateCents, discountPercent = 0 } = input;
 
-  if (!Number.isFinite(hours) || hours < 0) {
-    throw new RangeError(`hours має бути скінченним числом >= 0, отримано: ${hours}`);
-  }
-  if (!Number.isFinite(rateCents) || rateCents < 0) {
-    throw new RangeError(`rateCents має бути скінченним числом >= 0, отримано: ${rateCents}`);
-  }
+  assertFiniteNonNegative("hours", hours);
+  assertFiniteNonNegative("rateCents", rateCents);
   if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-    throw new RangeError(
-      `discountPercent має бути в діапазоні 0..100, отримано: ${discountPercent}`,
-    );
+    throw rangeError("discountPercent", "в діапазоні 0..100", discountPercent);
   }
 
   const gross = hours * rateCents;
@@ -61,10 +70,10 @@ export function estimateTotalCents(input: QuoteInput): number {
  */
 export function splitInstallments(totalCents: number, parts: number): number[] {
   if (!Number.isInteger(totalCents)) {
-    throw new RangeError(`totalCents має бути цілим числом центів, отримано: ${totalCents}`);
+    throw rangeError("totalCents", "цілим числом центів", totalCents);
   }
   if (!Number.isInteger(parts) || parts <= 0) {
-    throw new RangeError(`parts має бути цілим числом > 0, отримано: ${parts}`);
+    throw rangeError("parts", "цілим числом > 0", parts);
   }
 
   const base = Math.trunc(totalCents / parts);

@@ -107,8 +107,21 @@ export function splitInstallments(totalCents: number, parts: number): number[] {
   );
 }
 
-/** Форматування центів у рядок на кшталт "$1,234.50". */
+/**
+ * Форматування центів у рядок на кшталт `"$1,234.50"`.
+ *
+ * Приймає **цілі** центи. До цього контракту не було, і функція мовчки
+ * видавала зламані рядки: `formatMoney(1.5)` → `"$0.1.5"` (два розділювачі),
+ * `formatMoney(NaN)` → `"$NaN.NaN"`. Дві сусідні функції свій контракт
+ * виконують — ця лишалась єдиною без нього.
+ *
+ * @throws {RangeError} якщо `cents` не є безпечним цілим.
+ */
 export function formatMoney(cents: number): string {
+  if (!Number.isSafeInteger(cents)) {
+    throw rangeError("cents", "цілим числом центів у межах безпечного цілого", cents);
+  }
+
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(cents);
   const whole = Math.floor(abs / 100).toLocaleString("en-US");

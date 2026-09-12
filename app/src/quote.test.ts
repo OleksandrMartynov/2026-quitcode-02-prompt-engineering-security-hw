@@ -274,6 +274,21 @@ describe("formatMoney", () => {
     expect(formatMoney(-5)).toBe("-$0.05");
   });
 
+  // Остання з трьох функцій, що отримала контракт. До цього вона мовчки
+  // видавала зламані рядки — єдиний дефект, який пережив усі прогони
+  // промптів, бо його фікс змінює поведінку, а stop-правило refactor-safe
+  // це забороняло. Рішення ухвалене окремо, як клас (B).
+
+  it("відхиляє нецілі центи замість рядка з двома розділювачами", () => {
+    expect(() => formatMoney(1.5)).toThrow(RangeError);
+    expect(() => formatMoney(1234.56)).toThrow(RangeError);
+  });
+
+  it("відхиляє NaN та Infinity замість валютного рядка з NaN", () => {
+    expect(() => formatMoney(NaN)).toThrow(RangeError);
+    expect(() => formatMoney(Infinity)).toThrow(RangeError);
+  });
+
   it("розділяє тисячі комами у великих сумах", () => {
     expect(formatMoney(100000000)).toBe("$1,000,000.00");
   });

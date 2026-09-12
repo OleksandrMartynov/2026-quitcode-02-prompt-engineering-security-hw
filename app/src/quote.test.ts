@@ -190,6 +190,25 @@ describe("splitInstallments", () => {
     expect(splitInstallments(0, 3)).toEqual([0, 0, 0]);
   });
 
+  // Додано за знахідкою #1 рев'ю `prompts/review-tests.md`: клас входу
+  // «невалідний parts» не покривався жодним тестом, і фактична поведінка
+  // мовчки порушувала всі три задокументовані гарантії —
+  // (100, 0) → [] (зникає вся сума), (100, 2.5) → [40, 40] (−20 центів).
+
+  it("відхиляє нульову або від'ємну кількість платежів замість тихої втрати суми", () => {
+    expect(() => splitInstallments(100, 0)).toThrow(RangeError);
+    expect(() => splitInstallments(100, -3)).toThrow(RangeError);
+  });
+
+  it("відхиляє дробову кількість платежів замість часткового розбиття", () => {
+    expect(() => splitInstallments(100, 2.5)).toThrow(RangeError);
+    expect(() => splitInstallments(100, NaN)).toThrow(RangeError);
+  });
+
+  it("відхиляє неціле число центів на вході", () => {
+    expect(() => splitInstallments(100.5, 3)).toThrow(RangeError);
+  });
+
   it("розбиває від'ємну суму (повернення коштів) без втрати цента", () => {
     expect(splitInstallments(-100, 3)).toEqual([-34, -33, -33]);
   });

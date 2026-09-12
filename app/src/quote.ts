@@ -24,6 +24,13 @@ function rangeError(name: string, expectation: string, value: number): RangeErro
   return new RangeError(`${name} має бути ${expectation}, отримано: ${value}`);
 }
 
+/**
+ * Верхня межа кількості платежів — 100 років щомісяця. Потрібна не для краси:
+ * `4_294_967_296` проходить перевірку «ціле > 0», а далі `Array.from` кидає
+ * сире `RangeError: Invalid array length` замість доменної помилки.
+ */
+const MAX_INSTALLMENTS = 1200;
+
 /** Контракт «скінченне число >= 0»: перевірка і її текст живуть разом. */
 function assertFiniteNonNegative(name: string, value: number): void {
   if (!Number.isFinite(value) || value < 0) {
@@ -52,7 +59,16 @@ export function estimateTotalCents(input: QuoteInput): number {
 
   const gross = hours * rateCents;
   const discount = (gross * discountPercent) / 100;
-  return Math.round(gross - discount);
+  const total = Math.round(gross - discount);
+
+  // Перевірки вище пропускають `hours: Number.MAX_VALUE` — кожне значення
+  // окремо скінченне, а їхній добуток уже ні. Без цієї перевірки функція
+  // повертає `Infinity`, і кошторис тихо стає безглуздим.
+  if (!Number.isSafeInteger(total)) {
+    throw rangeError("підсумок", "у межах безпечного цілого", total);
+  }
+
+  return total;
 }
 
 /**
@@ -72,8 +88,8 @@ export function splitInstallments(totalCents: number, parts: number): number[] {
   if (!Number.isInteger(totalCents)) {
     throw rangeError("totalCents", "цілим числом центів", totalCents);
   }
-  if (!Number.isInteger(parts) || parts <= 0) {
-    throw rangeError("parts", "цілим числом > 0", parts);
+  if (!Number.isInteger(parts) || parts <= 0 || parts > MAX_INSTALLMENTS) {
+    throw rangeError("parts", `цілим числом від 1 до ${MAX_INSTALLMENTS}`, parts);
   }
 
   const base = Math.trunc(totalCents / parts);

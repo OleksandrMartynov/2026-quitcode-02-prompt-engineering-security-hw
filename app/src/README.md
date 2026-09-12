@@ -90,6 +90,7 @@ estimateTotalCents({ hours: 1.5, rateCents: 4999 }); // 7499
 | від'ємні `hours` або `rateCents` | `RangeError` | `app/src/quote.ts:32-37`, `app/src/quote.test.ts:87-90` |
 | `discountPercent` < 0 або > 100 | `RangeError` | `app/src/quote.ts:38-42`, `app/src/quote.test.ts:92-107` |
 | `NaN`, `Infinity` у будь-якому полі | `RangeError` | `app/src/quote.ts:32`, `app/src/quote.ts:35`, `app/src/quote.ts:38`, `app/src/quote.test.ts:98-101` |
+| `hours × rateCents` виходить за безпечне ціле | `RangeError` — кожне значення окремо скінченне, добуток уже ні | `app/src/quote.ts:54-58` |
 | нецілі `hours` | валідний вхід, округлення на виході | `app/src/quote.test.ts:74-79` |
 | нецілий `rateCents` | не відхиляється, дріб зникає в округленні; тестом не покрито | `app/src/quote.ts:35-37`, `app/src/quote.ts:46` |
 
@@ -145,6 +146,7 @@ splitInstallments(-100, 3); // [-34, -33, -33]
 | від'ємна сума | симетрично, залишок теж першим платежам: `[-34, -33, -33]` | `app/src/quote.ts:63`, `app/src/quote.ts:65`, `app/src/quote.test.ts:193-195` |
 | сума, що ділиться націло | рівні платежі: `splitInstallments(90000, 3) === [30000, 30000, 30000]` | `app/src/quote.test.ts:132-134` |
 | `parts` ≤ 0, нецілий або `NaN` | `RangeError` | `app/src/quote.ts:61-66` |
+| `parts` > 1200 | `RangeError` (доменна, не `Invalid array length`) | `app/src/quote.ts:66` |
 | `totalCents` нецілий | `RangeError` | `app/src/quote.ts:61-63` |
 
 Вхід валідується: `parts` має бути цілим > 0, `totalCents` — цілим числом

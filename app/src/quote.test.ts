@@ -95,6 +95,16 @@ describe("estimateTotalCents", () => {
     ).toThrow(RangeError);
   });
 
+  // Додано за аналізом рев'ю чужих PR: обидва дефекти знайшли в роботах
+  // колег, і в нашій вони теж були. Кожне значення окремо скінченне,
+  // а добуток — уже ні.
+
+  it("відхиляє кошторис, що вийшов за межі безпечного цілого", () => {
+    expect(() =>
+      estimateTotalCents({ hours: Number.MAX_VALUE, rateCents: 2 }),
+    ).toThrow(RangeError);
+  });
+
   it("відхиляє нечислові значення замість тихого NaN", () => {
     expect(() => estimateTotalCents({ hours: NaN, rateCents: 5000 })).toThrow(RangeError);
     expect(() => estimateTotalCents({ hours: Infinity, rateCents: 5000 })).toThrow(RangeError);
@@ -203,6 +213,14 @@ describe("splitInstallments", () => {
   it("відхиляє дробову кількість платежів замість часткового розбиття", () => {
     expect(() => splitInstallments(100, 2.5)).toThrow(RangeError);
     expect(() => splitInstallments(100, NaN)).toThrow(RangeError);
+  });
+
+  it("відхиляє надто велику кількість платежів доменною помилкою", () => {
+    // 4_294_967_296 проходить «ціле > 0», а Array.from кидає сире
+    // RangeError: Invalid array length — це не доменна помилка.
+    expect(() => splitInstallments(100, 4_294_967_296)).toThrow(
+      /від 1 до 1200/,
+    );
   });
 
   it("відхиляє неціле число центів на вході", () => {

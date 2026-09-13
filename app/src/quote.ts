@@ -42,12 +42,22 @@ const PERCENT_SCALE = 100;
 
 /**
  * Переводить дробове значення в ціле за заданим масштабом і **відхиляє**
- * вхід, точніший за контракт. Саме тут ловиться `hours: 0.4999996`:
- * `0.4999996 * 100 = 49.99996`, що не є цілим, тож значення поза контрактом.
+ * вхід, точніший за контракт. Тут ловляться обидва класи:
+ * `hours: 0.4999996` (`* 100 = 49.99996` — не ціле) і `hours: 1e-12`
+ * (`* 100 = 1e-10` — теж не ціле, хоч і мікроскопічне).
  */
 function toScaled(name: string, value: number, scale: number): number {
-  const scaled = Math.round(value * scale);
-  if (!(Math.abs(value * scale - scaled) < 1e-9)) {
+  const product = value * scale;
+  const scaled = Math.round(product);
+
+  // Допуск **відносний**, а не фіксований. Абсолютний `1e-9` пропускав усе
+  // менше за 1e-11 години: `hours: 1e-12` давало `product = 1e-10 < 1e-9`,
+  // округлювалось до 0 і тихо проходило — попри контракт, що точніше за
+  // 0.01 год треба відхиляти. `Number.EPSILON` масштабується разом зі
+  // значенням, тож допускає лише похибку представлення IEEE 754 і нічого
+  // понад неї.
+  const tolerance = Number.EPSILON * Math.max(1, Math.abs(product));
+  if (!(Math.abs(product - scaled) <= tolerance)) {
     throw rangeError(name, `числом з точністю не дрібніше за 1/${scale}`, value);
   }
   return scaled;
@@ -104,6 +114,16 @@ export function estimateTotalCents(input: QuoteInput): number {
 
   // Одиниці: сотi цента. Обидва множники цілі, тож добуток точний.
   const grossCenti = centiHours * rateCents;
+
+  // Перевіряти треба **обидва** добутки окремо. Перевірка самого `numerator`
+  // недостатня: при `discountPercent: 100` множник `remaining` дорівнює нулю,
+  // тож `numerator` виходить 0 — безпечний — навіть коли `grossCenti` уже
+  // вискочив за межу. Відповідь для 100% знижки випадково правильна (нуль),
+  // але контракт «проміжні добутки безпечні» при цьому порушено мовчки.
+  if (!Number.isSafeInteger(grossCenti)) {
+    throw rangeError("недисконтована сума", "у межах безпечного цілого", grossCenti);
+  }
+
   const remaining = PERCENT_SCALE * 100 - centiPercent; // частка, що лишається
   const numerator = grossCenti * remaining;
 
@@ -113,11 +133,12 @@ export function estimateTotalCents(input: QuoteInput): number {
 
   const total = Math.round(numerator / (HOURS_SCALE * PERCENT_SCALE * 100));
 
-  // Третя сітка — запобіжник на сам результат. Порядок спрацювання перевірено,
-  // а не припущено:
-  //   hours: MAX_VALUE     → ловить `toScaled` (MAX_VALUE * 100 = Infinity)
-  //   hours: 1e7, rate: 1e7 → ловить перевірка `numerator`
-  // Входу, який дійшов би сюди повз обидві, я не знайшов — тому ця перевірка
+  // Четверта сітка — запобіжник на сам результат. Порядок спрацювання
+  // перевірено, а не припущено:
+  //   hours: MAX_VALUE          → `toScaled` (MAX_VALUE * 100 = Infinity)
+  //   hours: 1e10, r: 1e7, 100% → перевірка `grossCenti`
+  //   hours: 1e7,  r: 1e7       → перевірка `numerator`
+  // Входу, який дійшов би сюди повз усі три, я не знайшов — тому ця перевірка
   // лишається як страховка, а не як робочий шлях.
   if (!Number.isSafeInteger(total)) {
     throw rangeError("підсумок", "у межах безпечного цілого", total);

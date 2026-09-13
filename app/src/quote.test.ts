@@ -84,6 +84,29 @@ describe("estimateTotalCents", () => {
     expect(() => estimateTotalCents({ hours: 0.4999996, rateCents: 1 })).toThrow(RangeError);
   });
 
+  it("відхиляє мікроскопічні години замість тихого нуля", () => {
+    // Абсолютний допуск 1e-9 пропускав усе менше за 1e-11 год: 1e-12 * 100
+    // давало 1e-10 < 1e-9, округлювалось до 0 і проходило. Допуск має бути
+    // відносним — масштабуватись разом зі значенням.
+    expect(() => estimateTotalCents({ hours: 1e-12, rateCents: 5000 })).toThrow(RangeError);
+  });
+
+  it("відхиляє небезпечну недисконтовану суму навіть при знижці 100%", () => {
+    // Перевірки самого numerator мало: при 100% множник remaining дорівнює
+    // нулю, тож numerator виходить 0 (безпечний) навіть коли grossCenti вже
+    // вискочив за межу. Відповідь випадково правильна, контракт — ні.
+    expect(() =>
+      estimateTotalCents({ hours: 1e10, rateCents: 1e7, discountPercent: 100 }),
+    ).toThrow(RangeError);
+  });
+
+  it("приймає години з похибкою представлення IEEE 754", () => {
+    // 0.29 * 100 === 28.999999999999996, 0.07 * 100 === 7.000000000000001 —
+    // це законні значення в межах контракту, відносний допуск їх пропускає.
+    expect(estimateTotalCents({ hours: 0.29, rateCents: 10000 })).toBe(2900);
+    expect(estimateTotalCents({ hours: 0.07, rateCents: 10000 })).toBe(700);
+  });
+
   it("відхиляє знижку, точнішу за соту відсотка", () => {
     expect(() =>
       estimateTotalCents({ hours: 10, rateCents: 5000, discountPercent: 33.3333 }),

@@ -45,14 +45,23 @@ function assertFiniteNonNegative(name: string, value: number): void {
  * діапазоном — це помилка введення, і вона має бути гучною. Тихо клампити
  * означало б виставити клієнту рахунок, якого ніхто не замовляв.
  *
- * @throws {RangeError} якщо `hours` або `rateCents` від'ємні чи не скінченні,
- *   або якщо `discountPercent` поза діапазоном `0..100`.
+ * @throws {RangeError} якщо `hours` або `rateCents` від'ємні чи не скінченні;
+ *   якщо `rateCents` не ціле (ставка задається в центах — дробові години
+ *   законні, дробові центи ні); якщо `discountPercent` поза `0..100`;
+ *   або якщо підсумок вийшов за межі безпечного цілого.
  */
 export function estimateTotalCents(input: QuoteInput): number {
   const { hours, rateCents, discountPercent = 0 } = input;
 
+  // Асиметрія навмисна: 1.5 години роботи — нормально, 0.5 цента ставки — ні.
+  // `rateCents` задокументовано як суму **в центах**, тож дробове значення
+  // тут означає, що хтось передав долари або неокруглену ставку; воно тихо
+  // зникало в `Math.round` нижче.
   assertFiniteNonNegative("hours", hours);
   assertFiniteNonNegative("rateCents", rateCents);
+  if (!Number.isInteger(rateCents)) {
+    throw rangeError("rateCents", "цілим числом центів", rateCents);
+  }
   if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
     throw rangeError("discountPercent", "в діапазоні 0..100", discountPercent);
   }

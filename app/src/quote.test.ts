@@ -107,6 +107,14 @@ describe("estimateTotalCents", () => {
     ).toThrow(RangeError);
   });
 
+  it("відхиляє дробову ставку, але приймає дробові години", () => {
+    // Ставка задокументована в центах: 0.5 цента — це не ставка, а помилка
+    // одиниць. Години дробовими бувають законно — 1.5 год роботи.
+    expect(() => estimateTotalCents({ hours: 2, rateCents: 0.5 })).toThrow(RangeError);
+    expect(() => estimateTotalCents({ hours: 1, rateCents: 50.5 })).toThrow(RangeError);
+    expect(estimateTotalCents({ hours: 1.5, rateCents: 4999 })).toBe(7499);
+  });
+
   it("відхиляє нечислові значення замість тихого NaN", () => {
     expect(() => estimateTotalCents({ hours: NaN, rateCents: 5000 })).toThrow(RangeError);
     expect(() => estimateTotalCents({ hours: Infinity, rateCents: 5000 })).toThrow(RangeError);

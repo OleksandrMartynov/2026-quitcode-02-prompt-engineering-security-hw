@@ -66,8 +66,15 @@ export function estimateTotalCents(input: QuoteInput): number {
     throw rangeError("discountPercent", "в діапазоні 0..100", discountPercent);
   }
 
-  const gross = hours * rateCents;
-  const discount = (gross * discountPercent) / 100;
+  // Дробові години законні, але множення їх на ставку дає похибку IEEE 754:
+  // `1.005 * 100` — це 100.49999999999999, а не 100.5, тож задокументоване
+  // half-up округлення тихо давало 100 замість 101. Гасимо накопичену похибку
+  // на порядок 1e-6 (далеко за межами будь-якої реальної точності годин)
+  // перед фінальним округленням до цента.
+  const exact = (value: number): number => Math.round(value * 1e6) / 1e6;
+
+  const gross = exact(hours * rateCents);
+  const discount = exact(gross * discountPercent) / 100;
   const total = Math.round(gross - discount);
 
   // Перевірки вище пропускають `hours: Number.MAX_VALUE` — кожне значення

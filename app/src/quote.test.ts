@@ -74,6 +74,12 @@ describe("estimateTotalCents", () => {
     expect(estimateTotalCents({ hours: 0, rateCents: 0, discountPercent: 20 })).toBe(0);
   });
 
+  it("округлює half-up навіть коли добуток дає похибку IEEE 754", () => {
+    // 1.005 * 100 === 100.49999999999999, не 100.5 — без гасіння похибки
+    // задокументоване half-up давало 100 замість 101.
+    expect(estimateTotalCents({ hours: 1.005, rateCents: 100 })).toBe(101);
+  });
+
   it("рахує дробові години без втрати пів цента", () => {
     // 1.5 × 4999 = 7498.5 цента → округлення half-up → 7499
     expect(estimateTotalCents({ hours: 1.5, rateCents: 4999 })).toBe(7499);

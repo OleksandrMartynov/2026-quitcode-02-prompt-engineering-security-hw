@@ -18,12 +18,14 @@ const parseMoney = (s: string): number => {
 };
 
 describe("estimateTotalCents", () => {
-  // ІНВАРІАНТ: для будь-якого валідного входу (hours >= 0, rateCents >= 0,
-  // discountPercent у 0..100) результат — ціле число центів у межах
-  // [0, round(hours * rateCents)]. Кошторис не буває дробовим і не буває
-  // від'ємним. Саме round: при дробових годинах half-up може дати на пів
-  // цента більше за gross (1.5 * 4999 = 7498.5 → 7499).
-  // Тест нижче бере цілий gross, тож ширшого твердження не доводить.
+  // ІНВАРІАНТ: для будь-якого входу в межах контракту (hours >= 0 з точністю
+  // до сотої години, rateCents — ціле >= 0, discountPercent 0..100 з точністю
+  // до сотої відсотка) результат — ціле число центів у межах
+  // [0, round(hours * rateCents)]. Саме round: half-up може дати на пів цента
+  // більше за недисконтовану суму (1.5 * 4999 = 7498.5 → 7499).
+  // Тест нижче бере цілу недисконтовану суму, тож ширшого твердження не
+  // доводить. Вхід, точніший за контракт, відхиляється — див. тест
+  // «відхиляє години, точніші за контракт».
 
   it("рахує суму без знижки", () => {
     expect(estimateTotalCents({ hours: 10, rateCents: 5000 })).toBe(50000);
@@ -74,10 +76,23 @@ describe("estimateTotalCents", () => {
     expect(estimateTotalCents({ hours: 0, rateCents: 0, discountPercent: 20 })).toBe(0);
   });
 
-  it("округлює half-up навіть коли добуток дає похибку IEEE 754", () => {
-    // 1.005 * 100 === 100.49999999999999, не 100.5 — без гасіння похибки
-    // задокументоване half-up давало 100 замість 101.
-    expect(estimateTotalCents({ hours: 1.005, rateCents: 100 })).toBe(101);
+  it("відхиляє години, точніші за контракт, замість тихого округлення", () => {
+    // Перша спроба «погасити похибку IEEE 754» округленням проміжних сум до
+    // 1e-6 зробила гірше: 0.4999996 год давало 1 цент замість 0. Контракт —
+    // сота години (36 с); точніший вхід відхиляється, а не підганяється.
+    expect(() => estimateTotalCents({ hours: 1.005, rateCents: 100 })).toThrow(RangeError);
+    expect(() => estimateTotalCents({ hours: 0.4999996, rateCents: 1 })).toThrow(RangeError);
+  });
+
+  it("відхиляє знижку, точнішу за соту відсотка", () => {
+    expect(() =>
+      estimateTotalCents({ hours: 10, rateCents: 5000, discountPercent: 33.3333 }),
+    ).toThrow(RangeError);
+  });
+
+  it("приймає години й знижку в межах контрактної точності", () => {
+    expect(estimateTotalCents({ hours: 1.25, rateCents: 4000 })).toBe(5000);
+    expect(estimateTotalCents({ hours: 10, rateCents: 5000, discountPercent: 12.5 })).toBe(43750);
   });
 
   it("рахує дробові години без втрати пів цента", () => {

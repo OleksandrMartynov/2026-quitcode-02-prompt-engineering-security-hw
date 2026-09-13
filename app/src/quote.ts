@@ -31,6 +31,28 @@ function rangeError(name: string, expectation: string, value: number): RangeErro
  */
 const MAX_INSTALLMENTS = 1200;
 
+/**
+ * Контрактна точність входу. Години — до сотої (0.01 год = 36 секунд),
+ * відсоток знижки — до сотої відсотка. Дрібніше не приймаємо: для кошторису
+ * така точність не має сенсу, а спроба її підтримати означає або плаваючу
+ * кому з її похибками, або десяткову бібліотеку заради 36 секунд.
+ */
+const HOURS_SCALE = 100;
+const PERCENT_SCALE = 100;
+
+/**
+ * Переводить дробове значення в ціле за заданим масштабом і **відхиляє**
+ * вхід, точніший за контракт. Саме тут ловиться `hours: 0.4999996`:
+ * `0.4999996 * 100 = 49.99996`, що не є цілим, тож значення поза контрактом.
+ */
+function toScaled(name: string, value: number, scale: number): number {
+  const scaled = Math.round(value * scale);
+  if (!(Math.abs(value * scale - scaled) < 1e-9)) {
+    throw rangeError(name, `числом з точністю не дрібніше за 1/${scale}`, value);
+  }
+  return scaled;
+}
+
 /** Контракт «скінченне число >= 0»: перевірка і її текст живуть разом. */
 function assertFiniteNonNegative(name: string, value: number): void {
   if (!Number.isFinite(value) || value < 0) {
@@ -45,10 +67,15 @@ function assertFiniteNonNegative(name: string, value: number): void {
  * діапазоном — це помилка введення, і вона має бути гучною. Тихо клампити
  * означало б виставити клієнту рахунок, якого ніхто не замовляв.
  *
+ * **Контрактна точність:** `hours` — до сотої години (36 секунд),
+ * `discountPercent` — до сотої відсотка, `rateCents` — ціле число центів.
+ * Точніший вхід відхиляється, а не округлюється тихо: інакше
+ * `hours: 0.4999996` дало б 1 цент замість 0.
+ *
  * @throws {RangeError} якщо `hours` або `rateCents` від'ємні чи не скінченні;
- *   якщо `rateCents` не ціле (ставка задається в центах — дробові години
- *   законні, дробові центи ні); якщо `discountPercent` поза `0..100`;
- *   або якщо підсумок вийшов за межі безпечного цілого.
+ *   якщо `rateCents` не ціле; якщо `hours` або `discountPercent` точніші за
+ *   контракт; якщо `discountPercent` поза `0..100`; або якщо проміжний
+ *   добуток чи підсумок вийшли за межі безпечного цілого.
  */
 export function estimateTotalCents(input: QuoteInput): number {
   const { hours, rateCents, discountPercent = 0 } = input;
@@ -66,22 +93,32 @@ export function estimateTotalCents(input: QuoteInput): number {
     throw rangeError("discountPercent", "в діапазоні 0..100", discountPercent);
   }
 
-  // Дробові години законні, але множення їх на ставку дає похибку IEEE 754:
-  // `1.005 * 100` — це 100.49999999999999, а не 100.5, тож задокументоване
-  // half-up округлення тихо давало 100 замість 101. Гасимо накопичену похибку
-  // на порядок 1e-6 (далеко за межами будь-якої реальної точності годин)
-  // перед фінальним округленням до цента.
-  const exact = (value: number): number => Math.round(value * 1e6) / 1e6;
+  // Уся арифметика — в цілих. Спроба «погасити похибку IEEE 754» округленням
+  // проміжних сум до 1e-6 була гіршою за проблему: вона тихо змінювала
+  // результат для входів із більшою точністю (`hours: 0.4999996` давало 1
+  // замість 0). Замість підчищання плаваючої коми тут зафіксована **контрактна
+  // точність** — і далі множення цілих, без жодного дробу до фінального
+  // ділення.
+  const centiHours = toScaled("hours", hours, HOURS_SCALE);
+  const centiPercent = toScaled("discountPercent", discountPercent, PERCENT_SCALE);
 
-  const gross = exact(hours * rateCents);
-  const discount = exact(gross * discountPercent) / 100;
-  const total = Math.round(gross - discount);
+  // Одиниці: сотi цента. Обидва множники цілі, тож добуток точний.
+  const grossCenti = centiHours * rateCents;
+  const remaining = PERCENT_SCALE * 100 - centiPercent; // частка, що лишається
+  const numerator = grossCenti * remaining;
 
-  // Перевірки вище пропускають `hours: Number.MAX_VALUE` — кожне значення
-  // окремо скінченне, а їхній добуток уже ні. Без цієї перевірки функція
-  // повертає `NaN`: `gross` стає `Infinity`, а `(Infinity * 0) / 100` — це
-  // вже `NaN`, тож кошторис тихо перетворюється на «не число».
-  // Саме `isSafeInteger`, а не `isFinite`: перший ловить обидва випадки.
+  if (!Number.isSafeInteger(numerator)) {
+    throw rangeError("проміжний добуток", "у межах безпечного цілого", numerator);
+  }
+
+  const total = Math.round(numerator / (HOURS_SCALE * PERCENT_SCALE * 100));
+
+  // Третя сітка — запобіжник на сам результат. Порядок спрацювання перевірено,
+  // а не припущено:
+  //   hours: MAX_VALUE     → ловить `toScaled` (MAX_VALUE * 100 = Infinity)
+  //   hours: 1e7, rate: 1e7 → ловить перевірка `numerator`
+  // Входу, який дійшов би сюди повз обидві, я не знайшов — тому ця перевірка
+  // лишається як страховка, а не як робочий шлях.
   if (!Number.isSafeInteger(total)) {
     throw rangeError("підсумок", "у межах безпечного цілого", total);
   }

@@ -59,16 +59,26 @@
 | `estimateTotalCents()` | `hours` із точністю до сотої | штатний, підтримуваний вхід | `app/src/quote.test.ts` → тест «рахує дробові години без втрати пів цента» |
 | `estimateTotalCents()` | `hours` точніші за соту години | `RangeError` — вхід відхиляється, а не округлюється | `app/src/quote.test.ts` → тест «відхиляє години, точніші за контракт, замість тихого округлення» |
 | `estimateTotalCents()` | `discountPercent` точніший за соту відсотка | `RangeError` | `app/src/quote.test.ts` → тест «відхиляє знижку, точнішу за соту відсотка» |
-| `estimateTotalCents()` | дробовий `rateCents` | `RangeError` — вхід відхиляється перевіркою `Number.isInteger(rateCents)` | `app/src/quote.ts` → `estimateTotalCents()`; `app/src/quote.test.ts` → тест «відхиляє дробову ставку, але приймає дробові години» |
+| `estimateTotalCents()` | дробовий `rateCents` | `RangeError` — вхід відхиляється перевіркою `Number.isSafeInteger(rateCents)` | `app/src/quote.ts` → `estimateTotalCents()`; `app/src/quote.test.ts` → тест «відхиляє дробову ставку, але приймає дробові години» |
 | `splitInstallments()` | дробовий `totalCents` | `RangeError` — вхід відхиляється | `app/src/quote.test.ts` → тест «відхиляє неціле число центів на вході» |
 | `splitInstallments()` | дробовий `parts` | `RangeError` — часткового розбиття не буває | `app/src/quote.test.ts` → тест «відхиляє дробову кількість платежів замість часткового розбиття» |
 | `formatMoney()` | дробові центи | `RangeError` — рядок не будується взагалі | `app/src/quote.test.ts` → тест «відхиляє нецілі центи замість рядка з двома розділювачами» |
 
-Перевірка цілості в `splitInstallments()` і `formatMoney()` — саме
-`Number.isSafeInteger`, а не `Number.isInteger`: другий повертає `true` для
-значень від 2^53, де цілочисельна арифметика вже неточна і головна гарантія
-тихо ламається (`app/src/quote.ts` → `splitInstallments()`, `formatMoney()`;
-`app/src/quote.test.ts` → тест «відхиляє суму за межею безпечного цілого замість тихої втрати центів»).
+Перевірка цілості всюди в модулі — саме `Number.isSafeInteger`, а не
+`Number.isInteger`: другий повертає `true` для значень від 2^53, де
+цілочисельна арифметика вже неточна і гарантії тихо ламаються. Це стосується
+`totalCents` у `splitInstallments()`, `cents` у `formatMoney()`, `rateCents` у
+`estimateTotalCents()` і масштабованих значень усередині `toScaled()`
+(`app/src/quote.ts` → всі чотири; `app/src/quote.test.ts` → тести «відхиляє суму
+за межею безпечного цілого замість тихої втрати центів», «відхиляє небезпечну
+ставку навіть при нульових годинах» і «відхиляє небезпечні масштабовані години
+навіть при нульовій ставці»).
+
+**Чому операнд перевіряється окремо від добутку.** Добуток нічого не доводить
+про свої множники: партнер-нуль робить безпечним будь-який із них. `{ hours: 0,
+rateCents: 2 ** 54 }` давало `grossCenti = 0` — і ставка не перевірялась
+узагалі. Тому кожне значення перевіряється там, де воно народилось, а перевірки
+добутків лишаються додатково, а не замість.
 
 Текст усіх помилок має єдину форму «X має бути ..., отримано: Y» і будується в
 одному місці — `app/src/quote.ts` → `rangeError()`.
@@ -128,7 +138,7 @@ discountPercent має бути числом з точністю не дрібн
 | Поле | Одиниця | Джерело |
 | --- | --- | --- |
 | `hours` | години, скінченне число ≥ 0, дробові дозволені **до сотої години** | `app/src/quote.ts` → `QuoteInput.hours`, `assertFiniteNonNegative()`, `toScaled()` з `HOURS_SCALE` |
-| `rateCents` | центи за годину (`5000` = $50.00), скінченне **ціле** число ≥ 0 | `app/src/quote.ts` → `QuoteInput.rateCents`, `assertFiniteNonNegative()` і перевірка `Number.isInteger` в `estimateTotalCents()` |
+| `rateCents` | центи за годину (`5000` = $50.00), скінченне **безпечне ціле** число ≥ 0 | `app/src/quote.ts` → `QuoteInput.rateCents`, `assertFiniteNonNegative()` і перевірка `Number.isSafeInteger` в `estimateTotalCents()` |
 | `discountPercent` | відсотки в діапазоні 0..100 **з точністю до сотої відсотка**, необов'язкове, типово `0` | `app/src/quote.ts` → `QuoteInput.discountPercent`, значення за замовчуванням у деструктуризації `estimateTotalCents()`, `toScaled()` з `PERCENT_SCALE` |
 | Результат | центи, ціле число в межах безпечного цілого | `app/src/quote.ts` → `Math.round` і перевірка `Number.isSafeInteger` для `total` в `estimateTotalCents()`; `app/src/quote.test.ts` → тест «повертає ціле число центів для будь-якого валідного входу (інваріант)» |
 
@@ -220,12 +230,17 @@ estimateTotalCents({ hours: 2, rateCents: 0.5 }); // RangeError
 | `hours` дробові до сотої | валідний вхід, округлення лише на виході | `app/src/quote.test.ts` → тести «рахує дробові години без втрати пів цента» і «приймає години й знижку в межах контрактної точності» |
 | `hours` точніші за соту години | `RangeError` від `toScaled()` — вхід поза контрактом, тихого округлення немає | `app/src/quote.ts` → `toScaled()`, `HOURS_SCALE`; `app/src/quote.test.ts` → тест «відхиляє години, точніші за контракт, замість тихого округлення» |
 | `discountPercent` точніший за соту відсотка | `RangeError` від `toScaled()` | `app/src/quote.ts` → `toScaled()`, `PERCENT_SCALE`; `app/src/quote.test.ts` → тест «відхиляє знижку, точнішу за соту відсотка» |
-| дробовий `rateCents` | `RangeError`: ставка задається в центах, дріб означає помилку одиниць | `app/src/quote.ts` → перевірка `Number.isInteger(rateCents)` в `estimateTotalCents()`; `app/src/quote.test.ts` → тест «відхиляє дробову ставку, але приймає дробові години» |
+| дробовий `rateCents` | `RangeError`: ставка задається в центах, дріб означає помилку одиниць | `app/src/quote.ts` → перевірка `Number.isSafeInteger(rateCents)` в `estimateTotalCents()`; `app/src/quote.test.ts` → тест «відхиляє дробову ставку, але приймає дробові години» |
 | від'ємні `hours` або `rateCents` | `RangeError` | `app/src/quote.ts` → `assertFiniteNonNegative()`; `app/src/quote.test.ts` → тест «відхиляє від'ємні години або ставку замість від'ємного рахунку» |
 | `discountPercent` менший за 0 | `RangeError` | `app/src/quote.test.ts` → тест «відхиляє від'ємну знижку замість тихої націнки» |
 | `discountPercent` більший за 100 | `RangeError` | `app/src/quote.test.ts` → тест «відхиляє знижку більшу за 100% замість виплати клієнту» |
 | `NaN` або `Infinity` у `hours` | `RangeError` — ловить `assertFiniteNonNegative()` ще до масштабування | `app/src/quote.ts` → `assertFiniteNonNegative()`; `app/src/quote.test.ts` → тест «відхиляє нечислові значення замість тихого NaN» |
 | вхід, що розганяє арифметику за межі безпечного цілого (`hours: Number.MAX_VALUE`) | `RangeError` | `app/src/quote.test.ts` → тест «відхиляє кошторис, що вийшов за межі безпечного цілого» |
+| `hours` мікроскопічні, але ненульові (`1e-12`) | `RangeError` — контрактна точність, а не тихий нуль; допуск відносний, не фіксований | `app/src/quote.ts` → `toScaled()`; `app/src/quote.test.ts` → тест «відхиляє мікроскопічні години замість тихого нуля» |
+| `hours` із похибкою представлення IEEE 754 (`0.29`, `0.07`) | штатний вхід — відносний допуск пропускає похибку представлення й нічого понад неї | `app/src/quote.ts` → `toScaled()`; `app/src/quote.test.ts` → тест «приймає години з похибкою представлення IEEE 754» |
+| недисконтована сума за межею безпечного цілого при `discountPercent: 100` | `RangeError` — нульовий множник знижки не виправдовує неперевірений добуток | `app/src/quote.ts` → перевірка `grossCenti`; `app/src/quote.test.ts` → тест «відхиляє небезпечну недисконтовану суму навіть при знижці 100%» |
+| `rateCents` за межею безпечного цілого при `hours: 0` | `RangeError` — нульовий добуток не виправдовує неперевірений множник | `app/src/quote.ts` → перевірка `Number.isSafeInteger(rateCents)`; `app/src/quote.test.ts` → тест «відхиляє небезпечну ставку навіть при нульових годинах» |
+| `hours`, що після масштабування виходять за безпечне ціле (`1e14`), при `rateCents: 0` | `RangeError` від `toScaled()` — з тієї ж причини | `app/src/quote.ts` → `toScaled()`; `app/src/quote.test.ts` → тест «відхиляє небезпечні масштабовані години навіть при нульовій ставці» |
 
 Помилка тут — частина контракту, а не збій: вхід поза діапазоном навмисно
 гучний, бо тихий кламп виставив би клієнту рахунок, якого ніхто не замовляв
@@ -431,7 +446,7 @@ formatMoney(NaN); // RangeError
   побачить (`app/src/quote.test.ts` → тест «відхиляє кошторис, що вийшов за межі безпечного цілого»).
 - **`assertFiniteNonNegative()` не перевіряє ні цілість, ні точність.** Вона
   закриває лише «скінченне ≥ 0»; цілість `rateCents` перевіряє окремий
-  `Number.isInteger` поруч, а точність `hours` — `toScaled()` далі
+  `Number.isSafeInteger` поруч, а точність `hours` — `toScaled()` далі
   (`app/src/quote.ts` → `assertFiniteNonNegative()`, `estimateTotalCents()`,
   `toScaled()`). Прибрати окрему перевірку `rateCents` — і дробова ставка знову
   тихо зникне в округленні (`app/src/quote.test.ts` → тести «відхиляє дробову ставку, але приймає дробові години»

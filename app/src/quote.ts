@@ -60,6 +60,15 @@ function toScaled(name: string, value: number, scale: number): number {
   if (!(Math.abs(product - scaled) <= tolerance)) {
     throw rangeError(name, `числом з точністю не дрібніше за 1/${scale}`, value);
   }
+
+  // Масштабоване значення має бути ще й **точним**, а не лише цілим. Покластись
+  // на перевірку добутку нижче не можна: добуток обнуляє будь-який партнер-нуль,
+  // тому `hours: 1e14` з `rateCents: 0` давало `centiHours = 1e16` — за межею
+  // точного цілого — і тихо проходило, бо сам добуток виходив 0.
+  if (!Number.isSafeInteger(scaled)) {
+    throw rangeError(name, `значенням у межах безпечного цілого після масштабування на ${scale}`, value);
+  }
+
   return scaled;
 }
 
@@ -83,8 +92,9 @@ function assertFiniteNonNegative(name: string, value: number): void {
  * `hours: 0.4999996` дало б 1 цент замість 0.
  *
  * @throws {RangeError} якщо `hours` або `rateCents` від'ємні чи не скінченні;
- *   якщо `rateCents` не ціле; якщо `hours` або `discountPercent` точніші за
- *   контракт; якщо `discountPercent` поза `0..100`; або якщо проміжний
+ *   якщо `rateCents` не є безпечним цілим; якщо `hours` або `discountPercent`
+ *   точніші за контракт або виходять за межу безпечного цілого після
+ *   масштабування; якщо `discountPercent` поза `0..100`; або якщо проміжний
  *   добуток чи підсумок вийшли за межі безпечного цілого.
  */
 export function estimateTotalCents(input: QuoteInput): number {
@@ -96,8 +106,11 @@ export function estimateTotalCents(input: QuoteInput): number {
   // зникало в `Math.round` нижче.
   assertFiniteNonNegative("hours", hours);
   assertFiniteNonNegative("rateCents", rateCents);
-  if (!Number.isInteger(rateCents)) {
-    throw rangeError("rateCents", "цілим числом центів", rateCents);
+  // Саме isSafeInteger: `2 ** 54` формально ціле, але вже не відрізняється від
+  // сусідів, тож «ставка в центах» перестає бути однозначною. З `hours: 0`
+  // такий вхід повертав 0 і не торкався жодної перевірки нижче.
+  if (!Number.isSafeInteger(rateCents)) {
+    throw rangeError("rateCents", "цілим числом центів у межах безпечного цілого", rateCents);
   }
   if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
     throw rangeError("discountPercent", "в діапазоні 0..100", discountPercent);
@@ -115,11 +128,13 @@ export function estimateTotalCents(input: QuoteInput): number {
   // Одиниці: сотi цента. Обидва множники цілі, тож добуток точний.
   const grossCenti = centiHours * rateCents;
 
-  // Перевіряти треба **обидва** добутки окремо. Перевірка самого `numerator`
-  // недостатня: при `discountPercent: 100` множник `remaining` дорівнює нулю,
-  // тож `numerator` виходить 0 — безпечний — навіть коли `grossCenti` уже
-  // вискочив за межу. Відповідь для 100% знижки випадково правильна (нуль),
-  // але контракт «проміжні добутки безпечні» при цьому порушено мовчки.
+  // Правило, яке коштувало двох проходів рев'ю: **добуток нічого не доводить
+  // про свої множники** — партнер-нуль робить безпечним будь-який із них. Тому
+  // кожен операнд перевіряється там, де він народився (`toScaled` вище і
+  // `rateCents` вище), а тут і нижче перевіряються самі добутки. Перевірки
+  // лише `numerator` не вистачало: при `discountPercent: 100` множник
+  // `remaining` дорівнює нулю, тож `numerator` виходив 0 — безпечний — навіть
+  // коли `grossCenti` уже вискочив за межу.
   if (!Number.isSafeInteger(grossCenti)) {
     throw rangeError("недисконтована сума", "у межах безпечного цілого", grossCenti);
   }
@@ -133,13 +148,16 @@ export function estimateTotalCents(input: QuoteInput): number {
 
   const total = Math.round(numerator / (HOURS_SCALE * PERCENT_SCALE * 100));
 
-  // Четверта сітка — запобіжник на сам результат. Порядок спрацювання
-  // перевірено, а не припущено:
-  //   hours: MAX_VALUE          → `toScaled` (MAX_VALUE * 100 = Infinity)
+  // Остання сітка — запобіжник на сам результат. Порядок спрацювання
+  // перевірено прогоном, а не припущено:
+  //   hours: MAX_VALUE          → `toScaled`, допуск (MAX_VALUE * 100 = Infinity)
+  //   hours: 1e14, r: 0         → `toScaled`, межа масштабованого цілого
+  //   hours: 0,    r: 2 ** 54   → перевірка `rateCents`
   //   hours: 1e10, r: 1e7, 100% → перевірка `grossCenti`
-  //   hours: 1e7,  r: 1e7       → перевірка `numerator`
-  // Входу, який дійшов би сюди повз усі три, я не знайшов — тому ця перевірка
-  // лишається як страховка, а не як робочий шлях.
+  //   hours: 1e8,  r: 1e5       → перевірка `numerator`
+  // Сюди дійти вже нічим: `numerator` безпечний, а ділення на 1e6 лише зменшує
+  // значення. Тому перевірка лишається страховкою на випадок зміни масштабів,
+  // а не робочим шляхом — і жоден тест її не досягає.
   if (!Number.isSafeInteger(total)) {
     throw rangeError("підсумок", "у межах безпечного цілого", total);
   }
